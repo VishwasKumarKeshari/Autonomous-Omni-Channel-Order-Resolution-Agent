@@ -60,7 +60,17 @@ def router_node(state: AgentState) -> Dict[str, Any]:
     last_message = state["messages"][-1].content
     extraction = structured_llm.invoke([HumanMessage(content=f"Analyze support request text: '{last_message}'")])
     order_id = extraction.order_id if extraction.order_id else state.get("order_id", "")
-    return {"intent": extraction.intent, "order_id": order_id}
+    
+    intent = extraction.intent
+    if intent == "unknown" and state.get("intent") and state.get("intent") != "unknown":
+        intent = state.get("intent")
+        
+    return {
+        "intent": intent,
+        "order_id": order_id,
+        "resolution_status": "",
+        "risk_score": 0.0
+    }
 
 async def process_cancel_node(state: AgentState) -> Dict[str, Any]:
     """Applies store cancel policies by fetching data live over the MCP server link."""
