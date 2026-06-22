@@ -30,7 +30,7 @@ graph TD
 ## 3. Web Dashboard UI (`templates/index.html`)
 
 A beautiful, dark-themed control center featuring:
-* **Customer Chat Sandbox (Left)**: Allows testing the agent dynamically. A dropdown lets you switch between different customer profiles (`cust_alpha`, `cust_beta`, `cust_gamma`, `cust_delta`) with independent conversation threads preserved in memory.
+* **Customer Chat Sandbox (Left)**: Allows testing the agent dynamically. An editable text input lets you specify any customer session ID (e.g., `cust_alpha`, `cust_beta`, etc.) to test independent conversation threads preserved in memory.
 * **Supervisor Escalations Queue (Right)**: Shows real-time pending approvals. Displays full metadata (Order ID, Item Name, Price, Days Since Delivery, and Risk Score) and includes single-click **Approve** and **Decline** buttons with micro-animations. It polls `/api/escalations` every 3 seconds to keep itself synchronized.
 
 ---

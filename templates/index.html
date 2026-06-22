@@ -691,13 +691,8 @@
             </div>
             
             <div class="session-selector-bar">
-                <span style="font-size: 0.8rem; color: var(--text-secondary); font-weight: 500;">Simulated Customer Profile:</span>
-                <select id="customer-select" class="session-select" onchange="switchCustomerSession()">
-                    <option value="cust_alpha">Customer A (Alpha) - Checking ABC-123 (Unshipped)</option>
-                    <option value="cust_beta" selected>Customer B (Beta) - Returning XYZ-789 ($1,499 value -> High Ticket)</option>
-                    <option value="cust_gamma">Customer C (Gamma) - Returning OLD-456 (45 days ago -> Expired)</option>
-                    <option value="cust_delta">Customer D (Delta) - Cancelling FIT-401 (Unshipped)</option>
-                </select>
+                <span style="font-size: 0.8rem; color: var(--text-secondary); font-weight: 500;">Active Customer ID:</span>
+                <input type="text" id="customer-select" class="session-select" value="cust_beta" style="background: #111827; cursor: text;" onchange="switchCustomerSession()">
             </div>
 
             <div id="chat-messages" class="chat-viewport">
