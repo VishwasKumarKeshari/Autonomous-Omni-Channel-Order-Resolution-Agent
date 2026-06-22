@@ -117,6 +117,25 @@ def get_escalations():
         
     return jsonify(escalations_list)
 
+@app.route("/api/orders", methods=["GET"])
+def get_all_orders():
+    """
+    Returns a list of all orders in the database for the visual database panel.
+    """
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM orders")
+        rows = cursor.fetchall()
+        orders = [dict(row) for row in rows]
+        conn.close()
+        return jsonify(orders)
+    except Exception as e:
+        logger.error(f"Error querying all orders: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
 @app.route("/api/approve", methods=["POST"])
 def approve_escalation():
     """

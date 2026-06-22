@@ -119,19 +119,106 @@
         .main-container {
             flex: 1;
             display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 2rem;
-            padding: 2rem;
-            max-width: 1600px;
+            grid-template-columns: 340px 1.2fr 1fr;
+            gap: 1.5rem;
+            padding: 1.5rem;
+            max-width: 1800px;
             width: 100%;
             margin: 0 auto;
         }
 
-        @media (max-width: 1024px) {
+        @media (max-width: 1200px) {
+            .main-container {
+                grid-template-columns: 1fr 1fr;
+            }
+        }
+
+        @media (max-width: 768px) {
             .main-container {
                 grid-template-columns: 1fr;
             }
         }
+
+        /* Database View Status Badges */
+        .status-badge {
+            padding: 0.25rem 0.5rem;
+            border-radius: 0.375rem;
+            font-size: 0.7rem;
+            font-weight: 600;
+            letter-spacing: 0.05em;
+            text-transform: uppercase;
+        }
+        .status-delivered {
+            background: rgba(16, 185, 129, 0.1);
+            color: #10b981;
+            border: 1px solid rgba(16, 185, 129, 0.2);
+        }
+        .status-shipped {
+            background: rgba(99, 102, 241, 0.1);
+            color: #818cf8;
+            border: 1px solid rgba(99, 102, 241, 0.2);
+        }
+        .status-unshipped {
+            background: rgba(245, 158, 11, 0.1);
+            color: #fbbf24;
+            border: 1px solid rgba(245, 158, 11, 0.2);
+        }
+        .status-cancelled {
+            background: rgba(239, 68, 68, 0.15);
+            color: #ef4444;
+            border: 1px solid rgba(239, 68, 68, 0.3);
+        }
+        .status-returned {
+            background: rgba(139, 92, 246, 0.15);
+            color: #a78bfa;
+            border: 1px solid rgba(139, 92, 246, 0.3);
+        }
+
+        .db-search-bar {
+            padding: 0.75rem 1rem;
+            background: rgba(31, 41, 55, 0.2);
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .db-search-input {
+            width: 100%;
+            background: #111827;
+            border: 1px solid var(--border-color);
+            color: var(--text-primary);
+            padding: 0.5rem 0.75rem;
+            border-radius: 0.5rem;
+            font-size: 0.85rem;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+
+        .db-search-input:focus {
+            border-color: var(--primary);
+        }
+
+        .db-order-card {
+            background: rgba(31, 41, 55, 0.25);
+            border: 1px solid var(--border-color);
+            border-radius: 0.5rem;
+            padding: 0.75rem;
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+            font-size: 0.85rem;
+            transition: transform 0.2s, border-color 0.2s;
+        }
+
+        .db-order-card:hover {
+            border-color: rgba(99, 102, 241, 0.4);
+            transform: translateY(-2px);
+        }
+
+        .db-card-top {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
 
         .glass-panel {
             background: var(--card-bg);
@@ -569,6 +656,29 @@
 
     <div class="main-container">
         
+        <!-- FIRST COLUMN: LIVE DATABASE PANEL -->
+        <div class="glass-panel">
+            <div class="panel-header">
+                <h2>
+                    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width="20" height="20" style="color: var(--primary); vertical-align: middle;">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4"></path>
+                    </svg>
+                    Live Database Registry
+                </h2>
+                <button onclick="fetchDatabaseOrders()" style="background: none; border: none; color: var(--text-secondary); cursor: pointer; display: flex; align-items: center; justify-content: center; transition: color 0.2s;" onmouseover="this.style.color='white'" onmouseout="this.style.color='var(--text-secondary)'" title="Refresh Database">
+                    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width="16" height="16">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M4 4v5h.582m15.356 2A8.001 8.001 0 1121.213 6H16"></path>
+                    </svg>
+                </button>
+            </div>
+            <div class="db-search-bar">
+                <input type="text" id="db-search" class="db-search-input" placeholder="Search by Order ID or Item..." oninput="filterDatabaseOrders()">
+            </div>
+            <div id="db-orders-list" style="flex: 1; overflow-y: auto; padding: 1rem; display: flex; flex-direction: column; gap: 0.75rem;">
+                <!-- DB order cards will be dynamically rendered here -->
+            </div>
+        </div>
+        
         <!-- LEFT PANEL: CUSTOMER INTERACTION -->
         <div class="glass-panel">
             <div class="panel-header">
@@ -636,13 +746,38 @@
     <script>
         const chatHistories = {}; // Map of customer_id -> Array of message objects
         let currentCustomerId = "cust_beta";
+        let allDatabaseOrders = []; // Cached array of all database orders
+
+        // Map order_id to simulated customer names for visual layout
+        const customerMap = {
+            "ABC-123": "Customer A (Alpha)",
+            "XYZ-789": "Customer B (Beta)",
+            "OLD-456": "Customer C (Gamma)",
+            "FIT-401": "Customer D (Delta)",
+            "APP-505": "Customer E (Epsilon)",
+            "LIT-888": "Customer F (Zeta)",
+            "VIP-999": "Customer G (Eta)",
+            "GAM-001": "Customer H (Theta)",
+            "GAM-002": "Customer I (Iota)",
+            "GAM-003": "Customer J (Kappa)"
+        };
+
+        // Get simulated customer name for an order ID
+        function getSimulatedCustomer(orderId) {
+            if (customerMap[orderId]) return customerMap[orderId];
+            // Fallback generic customer ID based on numeric parts
+            const num = orderId.split("-")[1] || "000";
+            return `Customer ${num}`;
+        }
 
         // Initialize default greeting message on start
         window.addEventListener("DOMContentLoaded", () => {
             currentCustomerId = document.getElementById("customer-select").value;
             loadChatHistory();
             fetchEscalations();
+            fetchDatabaseOrders();
             setInterval(fetchEscalations, 3000); // Poll escalations list every 3s
+            setInterval(fetchDatabaseOrders, 5000); // Poll database orders list every 5s
         });
 
         function showNotification(message, isError = false) {
@@ -762,6 +897,7 @@
                         showNotification("Request paused. Escaping high-value return to supervisor audit queue.", false);
                         fetchEscalations(); // Instantly reload escalations
                     }
+                    fetchDatabaseOrders(); // Instantly reload database registry to reflect any changes!
                 } else {
                     const errorMsg = data.error || "An error occurred";
                     chatHistories[currentCustomerId].push({ sender: "system", text: `Error: ${errorMsg}`, timestamp: now });
@@ -823,7 +959,7 @@
                         </div>
                         <span class="risk-badge">RISK: ${Math.round(item.risk_score * 100)}%</span>
                     </div>
-
+ 
                     <div class="escalation-details-grid">
                         <div class="detail-item">
                             <span class="detail-label">Item</span>
@@ -877,12 +1013,129 @@
                     
                     loadChatHistory();
                     fetchEscalations();
+                    fetchDatabaseOrders(); // Instantly reload database registry!
                 } else {
                     showNotification(data.error || `Failed to ${action} escalation`, true);
                 }
             } catch (err) {
                 showNotification(`Network error during resolution.`, true);
             }
+        }
+
+        async function fetchDatabaseOrders() {
+            try {
+                const response = await fetch("/api/orders");
+                if (!response.ok) throw new Error("Failed to fetch database orders");
+                
+                allDatabaseOrders = await response.json();
+                renderDatabaseOrders(allDatabaseOrders);
+            } catch (err) {
+                console.error("Error pulling database orders:", err);
+            }
+        }
+
+        function renderDatabaseOrders(orders) {
+            const container = document.getElementById("db-orders-list");
+            
+            // Check if search input has focus (to avoid replacing elements under cursor during typing)
+            const searchInput = document.getElementById("db-search");
+            const isSearching = searchInput && searchInput.value.trim() !== "";
+            if (isSearching) {
+                // If the user is currently searching, don't auto-replace unless they search/filter manually
+                return;
+            }
+
+            container.innerHTML = "";
+
+            if (orders.length === 0) {
+                container.innerHTML = `
+                    <div style="text-align: center; color: var(--text-secondary); padding: 2rem; font-size: 0.85rem;">
+                        No database records found.
+                    </div>
+                `;
+                return;
+            }
+
+            orders.forEach(item => {
+                const card = document.createElement("div");
+                card.className = "db-order-card";
+                
+                const statusClass = `status-${item.fulfillment_status.toLowerCase()}`;
+                const customerName = getSimulatedCustomer(item.order_id);
+                
+                card.innerHTML = `
+                    <div class="db-card-top">
+                        <span style="font-weight: 700; color: white;">${item.order_id}</span>
+                        <span class="status-badge ${statusClass}">${item.fulfillment_status}</span>
+                    </div>
+                    <div style="font-size: 0.75rem; color: var(--text-secondary); margin-top: -0.15rem;">
+                        ${customerName}
+                    </div>
+                    <div style="display: flex; justify-content: space-between; font-size: 0.75rem; color: var(--text-primary); margin-top: 0.25rem;">
+                        <span style="max-width: 170px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${item.item_name}">${item.item_name}</span>
+                        <span style="font-weight: 600; color: #f87171;">$${parseFloat(item.item_value).toFixed(2)}</span>
+                    </div>
+                    <div style="font-size: 0.7rem; color: var(--text-secondary); text-align: right; margin-top: 0.15rem;">
+                        Delivered ${item.days_since_delivery} days ago
+                    </div>
+                `;
+                container.appendChild(card);
+            });
+        }
+
+        function filterDatabaseOrders() {
+            const query = document.getElementById("db-search").value.toLowerCase().trim();
+            const container = document.getElementById("db-orders-list");
+            
+            if (!query) {
+                renderDatabaseOrders(allDatabaseOrders);
+                return;
+            }
+
+            const filtered = allDatabaseOrders.filter(item => {
+                const orderMatch = item.order_id.toLowerCase().includes(query);
+                const itemMatch = item.item_name.toLowerCase().includes(query);
+                const customerMatch = getSimulatedCustomer(item.order_id).toLowerCase().includes(query);
+                const statusMatch = item.fulfillment_status.toLowerCase().includes(query);
+                return orderMatch || itemMatch || customerMatch || statusMatch;
+            });
+            
+            // Render directly bypass search focus guard
+            container.innerHTML = "";
+            if (filtered.length === 0) {
+                container.innerHTML = `
+                    <div style="text-align: center; color: var(--text-secondary); padding: 2rem; font-size: 0.85rem;">
+                        No matching records found.
+                    </div>
+                `;
+                return;
+            }
+
+            filtered.forEach(item => {
+                const card = document.createElement("div");
+                card.className = "db-order-card";
+                
+                const statusClass = `status-${item.fulfillment_status.toLowerCase()}`;
+                const customerName = getSimulatedCustomer(item.order_id);
+                
+                card.innerHTML = `
+                    <div class="db-card-top">
+                        <span style="font-weight: 700; color: white;">${item.order_id}</span>
+                        <span class="status-badge ${statusClass}">${item.fulfillment_status}</span>
+                    </div>
+                    <div style="font-size: 0.75rem; color: var(--text-secondary); margin-top: -0.15rem;">
+                        ${customerName}
+                    </div>
+                    <div style="display: flex; justify-content: space-between; font-size: 0.75rem; color: var(--text-primary); margin-top: 0.25rem;">
+                        <span style="max-width: 170px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${item.item_name}">${item.item_name}</span>
+                        <span style="font-weight: 600; color: #f87171;">$${parseFloat(item.item_value).toFixed(2)}</span>
+                    </div>
+                    <div style="font-size: 0.7rem; color: var(--text-secondary); text-align: right; margin-top: 0.15rem;">
+                        Delivered ${item.days_since_delivery} days ago
+                    </div>
+                `;
+                container.appendChild(card);
+            });
         }
     </script>
 </body>
