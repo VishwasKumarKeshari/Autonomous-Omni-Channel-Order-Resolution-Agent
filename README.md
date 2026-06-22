@@ -1,4 +1,15 @@
+---
+title: Autonomous Omni Channel Order Resolution Agent
+emoji: 🤖
+colorFrom: indigo
+colorTo: blue
+sdk: docker
+app_port: 7860
+pinned: false
+---
+
 # Autonomous Omni-Channel Order Resolution Agent
+
 
 An AI-powered order resolution system designed to handle customer e-commerce inquiries (status checks, cancellations, and returns) autonomously while integrating a supervisor approval queue for high-risk operations.
 
