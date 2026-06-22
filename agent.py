@@ -39,8 +39,9 @@ class RouteInput(BaseModel):
         default="", description="The alphanumeric order ID if mentioned in the message text."
     )
 
-# Setup LLM processor using Google Gemini
-llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0)
+# Setup LLM processor using Google Gemini (fail fast on rate limits)
+llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0, max_retries=1)
+
 
 # Configure stdio connection parameters to launch the MCP database server
 MCP_CONFIG = {
