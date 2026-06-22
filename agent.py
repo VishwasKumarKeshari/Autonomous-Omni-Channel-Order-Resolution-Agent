@@ -66,7 +66,10 @@ async def process_cancel_node(state: AgentState) -> Dict[str, Any]:
     """Applies store cancel policies by fetching data live over the MCP server link."""
     order_id = state.get("order_id")
     if not order_id:
-        return {"messages": [AIMessage(content="Please provide your order ID so I can process your cancellation.")]}
+        return {
+            "messages": [AIMessage(content="Please provide your order ID so I can process your cancellation.")],
+            "resolution_status": "completed"
+        }
         
     mcp_client = MultiServerMCPClient(MCP_CONFIG)
     async with mcp_client.session("local-db-mcp-service") as session:
@@ -94,7 +97,10 @@ async def process_return_node(state: AgentState) -> Dict[str, Any]:
     """Handles returns and evaluates transaction risk over pre-stored items."""
     order_id = state.get("order_id")
     if not order_id:
-        return {"messages": [AIMessage(content="Please provide your order ID to begin your return.")]}
+        return {
+            "messages": [AIMessage(content="Please provide your order ID to begin your return.")],
+            "resolution_status": "completed"
+        }
         
     mcp_client = MultiServerMCPClient(MCP_CONFIG)
     async with mcp_client.session("local-db-mcp-service") as session:
@@ -124,7 +130,10 @@ async def general_status_node(state: AgentState) -> Dict[str, Any]:
     """Provides safe read-only file status lookups over the system network."""
     order_id = state.get("order_id")
     if not order_id:
-        return {"messages": [AIMessage(content="Please provide your order ID to check status tracking records.")]}
+        return {
+            "messages": [AIMessage(content="Please provide your order ID to check status tracking records.")],
+            "resolution_status": "completed"
+        }
         
     mcp_client = MultiServerMCPClient(MCP_CONFIG)
     async with mcp_client.session("local-db-mcp-service") as session:
@@ -167,12 +176,17 @@ async def risk_and_commit_node(state: AgentState) -> Dict[str, Any]:
         "messages": [AIMessage(content=f"Success! {db_mutation_result}")]
     }
 
+def fallback_node(state: AgentState) -> Dict[str, Any]:
+    """Handles messages where intent is unknown or unstructured."""
+    return {
+        "messages": [AIMessage(content="I'm sorry, I didn't quite catch that. I can help you check your order status, request a cancellation, or process a return. Please provide your order ID to get started.")],
+        "resolution_status": "completed"
+    }
+
 # ==========================================================
 # 3. GRAPH CONDITIONAL ROUTING MAP AND COMPILATION
 # ==========================================================
 def route_intent_condition(state: AgentState) -> Literal["cancel_order", "return_refund", "order_status", "unknown"]:
-    if not state.get("order_id") and state.get("intent") != "unknown":
-        return "unknown"
     return state.get("intent", "unknown")
 
 def route_risk_condition(state: AgentState) -> Literal["commit", "end"]:
@@ -186,15 +200,17 @@ builder.add_node("router", router_node)
 builder.add_node("cancel_order", process_cancel_node)
 builder.add_node("return_refund", process_return_node)
 builder.add_node("order_status", general_status_node)
+builder.add_node("fallback", fallback_node)
 builder.add_node("risk_and_commit", risk_and_commit_node)
 
 builder.add_edge(START, "router")
 builder.add_conditional_edges("router", route_intent_condition, {
-    "cancel_order": "cancel_order", "return_refund": "return_refund", "order_status": "order_status", "unknown": END
+    "cancel_order": "cancel_order", "return_refund": "return_refund", "order_status": "order_status", "unknown": "fallback"
 })
 builder.add_conditional_edges("cancel_order", route_risk_condition, {"commit": "risk_and_commit", "end": END})
 builder.add_conditional_edges("return_refund", route_risk_condition, {"commit": "risk_and_commit", "end": END})
 builder.add_edge("order_status", END)
+builder.add_edge("fallback", END)
 builder.add_edge("risk_and_commit", END)
 
 # Compile using short term memory checkpointer to store chat context tracks
