@@ -1,0 +1,35 @@
+# Python caches and bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Virtual environment directories
+.venv/
+venv/
+ENV/
+env/
+
+# Sensitive configuration files (contains API keys)
+.env
+.env.local
+.env.*.local
+
+# IDEs, editor files, and workspace configuration
+.vscode/
+.idea/
+.gemini/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# OS files
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+.DS_Store
+
+# Logs
+*.log

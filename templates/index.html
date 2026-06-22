@@ -1,0 +1,889 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Autonomous Order Resolution Dashboard</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-color: #0b0f19;
+            --card-bg: rgba(17, 24, 39, 0.7);
+            --border-color: rgba(255, 255, 255, 0.08);
+            --text-primary: #f3f4f6;
+            --text-secondary: #9ca3af;
+            --primary: #6366f1;
+            --primary-hover: #4f46e5;
+            --success: #10b981;
+            --success-glow: rgba(16, 185, 129, 0.2);
+            --danger: #ef4444;
+            --danger-glow: rgba(239, 68, 68, 0.2);
+            --warning: #f59e0b;
+            --glow-color: rgba(99, 102, 241, 0.15);
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: 'Inter', sans-serif;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        body {
+            background-color: var(--bg-color);
+            background-image: 
+                radial-gradient(at 0% 0%, rgba(99, 102, 241, 0.12) 0px, transparent 50%),
+                radial-gradient(at 100% 100%, rgba(16, 185, 129, 0.06) 0px, transparent 50%);
+            color: var(--text-primary);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow-x: hidden;
+        }
+
+        header {
+            background: rgba(15, 23, 42, 0.6);
+            backdrop-filter: blur(12px);
+            border-bottom: 1px solid var(--border-color);
+            padding: 1.25rem 2rem;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            position: sticky;
+            top: 0;
+            z-index: 10;
+        }
+
+        .logo-container {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+
+        .logo-icon {
+            width: 2.25rem;
+            height: 2.25rem;
+            background: linear-gradient(135deg, var(--primary), #8b5cf6);
+            border-radius: 0.5rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 0 15px rgba(99, 102, 241, 0.4);
+        }
+
+        .logo-icon svg {
+            width: 1.25rem;
+            height: 1.25rem;
+            fill: white;
+        }
+
+        header h1 {
+            font-family: 'Outfit', sans-serif;
+            font-size: 1.5rem;
+            font-weight: 700;
+            background: linear-gradient(to right, #ffffff, #a7f3d0);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .system-status {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            background: rgba(16, 185, 129, 0.1);
+            border: 1px solid rgba(16, 185, 129, 0.2);
+            padding: 0.375rem 0.875rem;
+            border-radius: 9999px;
+            font-size: 0.75rem;
+            font-weight: 500;
+            color: var(--success);
+        }
+
+        .status-dot {
+            width: 0.5rem;
+            height: 0.5rem;
+            background-color: var(--success);
+            border-radius: 50%;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0% { transform: scale(0.9); opacity: 0.6; }
+            50% { transform: scale(1.1); opacity: 1; }
+            100% { transform: scale(0.9); opacity: 0.6; }
+        }
+
+        .main-container {
+            flex: 1;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 2rem;
+            padding: 2rem;
+            max-width: 1600px;
+            width: 100%;
+            margin: 0 auto;
+        }
+
+        @media (max-width: 1024px) {
+            .main-container {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .glass-panel {
+            background: var(--card-bg);
+            backdrop-filter: blur(16px);
+            border: 1px solid var(--border-color);
+            border-radius: 1rem;
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+            display: flex;
+            flex-direction: column;
+            height: calc(100vh - 10rem);
+            min-height: 550px;
+            overflow: hidden;
+            position: relative;
+            transition: box-shadow 0.3s ease;
+        }
+
+        .glass-panel:hover {
+            box-shadow: 0 8px 32px var(--glow-color);
+        }
+
+        .panel-header {
+            padding: 1.25rem 1.5rem;
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            background: rgba(15, 23, 42, 0.3);
+        }
+
+        .panel-header h2 {
+            font-family: 'Outfit', sans-serif;
+            font-size: 1.2rem;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .panel-header h2 svg {
+            width: 1.25rem;
+            height: 1.25rem;
+            color: var(--primary);
+        }
+
+        /* CUSTOMER SIMULATION CONFIG */
+        .session-selector-bar {
+            padding: 0.75rem 1.5rem;
+            background: rgba(31, 41, 55, 0.4);
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 1rem;
+        }
+
+        .session-select {
+            background: #1f2937;
+            border: 1px solid var(--border-color);
+            color: var(--text-primary);
+            padding: 0.375rem 0.75rem;
+            border-radius: 0.5rem;
+            font-size: 0.85rem;
+            outline: none;
+            cursor: pointer;
+            flex: 1;
+            transition: border-color 0.2s;
+        }
+
+        .session-select:focus {
+            border-color: var(--primary);
+        }
+
+        /* CHAT VIEWPORT */
+        .chat-viewport {
+            flex: 1;
+            overflow-y: auto;
+            padding: 1.5rem;
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+            scroll-behavior: smooth;
+        }
+
+        .message-bubble {
+            max-width: 75%;
+            padding: 0.875rem 1.125rem;
+            border-radius: 1rem;
+            font-size: 0.925rem;
+            line-height: 1.4;
+            position: relative;
+            animation: slideIn 0.3s ease;
+        }
+
+        @keyframes slideIn {
+            from { transform: translateY(8px); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
+        }
+
+        .message-bubble.incoming {
+            background-color: #2e354f;
+            color: var(--text-primary);
+            align-self: flex-start;
+            border-bottom-left-radius: 0.25rem;
+        }
+
+        .message-bubble.outgoing {
+            background: linear-gradient(135deg, var(--primary), #4f46e5);
+            color: white;
+            align-self: flex-end;
+            border-bottom-right-radius: 0.25rem;
+            box-shadow: 0 4px 12px rgba(99, 102, 241, 0.2);
+        }
+
+        .message-bubble.system {
+            background-color: rgba(239, 68, 68, 0.1);
+            color: #f87171;
+            align-self: center;
+            max-width: 90%;
+            text-align: center;
+            border: 1px solid rgba(239, 68, 68, 0.2);
+            font-size: 0.85rem;
+        }
+
+        .message-meta {
+            font-size: 0.7rem;
+            margin-top: 0.375rem;
+            opacity: 0.6;
+            text-align: right;
+        }
+
+        /* CHAT INPUT AREA */
+        .chat-input-area {
+            padding: 1.25rem 1.5rem;
+            border-top: 1px solid var(--border-color);
+            background: rgba(15, 23, 42, 0.4);
+        }
+
+        .chat-input-form {
+            display: flex;
+            gap: 0.75rem;
+        }
+
+        .chat-input {
+            flex: 1;
+            background: #111827;
+            border: 1px solid var(--border-color);
+            color: var(--text-primary);
+            padding: 0.75rem 1rem;
+            border-radius: 0.5rem;
+            outline: none;
+            font-size: 0.925rem;
+            transition: border-color 0.2s, box-shadow 0.2s;
+        }
+
+        .chat-input:focus {
+            border-color: var(--primary);
+            box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.2);
+        }
+
+        .chat-submit-btn {
+            background: linear-gradient(135deg, var(--primary), var(--primary-hover));
+            color: white;
+            border: none;
+            padding: 0.75rem 1.25rem;
+            border-radius: 0.5rem;
+            cursor: pointer;
+            font-weight: 500;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: opacity 0.2s, transform 0.1s;
+        }
+
+        .chat-submit-btn:hover {
+            opacity: 0.9;
+        }
+
+        .chat-submit-btn:active {
+            transform: scale(0.97);
+        }
+
+        .chat-submit-btn svg {
+            width: 1.25rem;
+            height: 1.25rem;
+        }
+
+        /* ESCALATION PANEL LIST */
+        .escalation-container {
+            flex: 1;
+            overflow-y: auto;
+            padding: 1.5rem;
+            display: flex;
+            flex-direction: column;
+            gap: 1.25rem;
+        }
+
+        .no-escalations {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            color: var(--text-secondary);
+            gap: 1rem;
+            text-align: center;
+            padding: 2rem;
+        }
+
+        .no-escalations-icon {
+            width: 4rem;
+            height: 4rem;
+            border-radius: 50%;
+            background: rgba(16, 185, 129, 0.1);
+            color: var(--success);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .no-escalations-icon svg {
+            width: 2rem;
+            height: 2rem;
+        }
+
+        .escalation-badge-count {
+            background-color: var(--danger);
+            color: white;
+            font-size: 0.75rem;
+            font-weight: 600;
+            padding: 0.15rem 0.5rem;
+            border-radius: 9999px;
+            box-shadow: 0 0 10px rgba(239, 68, 68, 0.5);
+        }
+
+        .escalation-card {
+            background: rgba(31, 41, 55, 0.3);
+            border: 1px solid var(--border-color);
+            border-radius: 0.75rem;
+            padding: 1.25rem;
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+            position: relative;
+            animation: slideIn 0.3s ease;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+
+        .escalation-card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+            padding-bottom: 0.75rem;
+        }
+
+        .order-meta-info {
+            display: flex;
+            flex-direction: column;
+            gap: 0.25rem;
+        }
+
+        .order-id-label {
+            font-weight: 700;
+            color: white;
+            font-size: 1.1rem;
+        }
+
+        .customer-id-label {
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+        }
+
+        .risk-badge {
+            background: rgba(239, 68, 68, 0.1);
+            color: #ef4444;
+            border: 1px solid rgba(239, 68, 68, 0.2);
+            padding: 0.25rem 0.625rem;
+            border-radius: 0.375rem;
+            font-size: 0.75rem;
+            font-weight: 600;
+            letter-spacing: 0.05em;
+        }
+
+        .escalation-details-grid {
+            display: grid;
+            grid-template-columns: 2fr 1fr 1fr;
+            gap: 0.75rem;
+            font-size: 0.85rem;
+        }
+
+        .detail-item {
+            display: flex;
+            flex-direction: column;
+            gap: 0.25rem;
+        }
+
+        .detail-label {
+            color: var(--text-secondary);
+            font-size: 0.7rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .detail-val {
+            color: var(--text-primary);
+            font-weight: 500;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .escalation-actions {
+            display: flex;
+            gap: 0.75rem;
+            margin-top: 0.25rem;
+        }
+
+        .action-btn {
+            flex: 1;
+            padding: 0.625rem 1rem;
+            border: none;
+            border-radius: 0.5rem;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 0.85rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.375rem;
+            transition: all 0.2s;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        .action-btn svg {
+            width: 1rem;
+            height: 1rem;
+        }
+
+        .approve-btn {
+            background: rgba(16, 185, 129, 0.15);
+            color: #10b981;
+            border: 1px solid rgba(16, 185, 129, 0.3);
+        }
+
+        .approve-btn:hover {
+            background: var(--success);
+            color: white;
+            box-shadow: 0 0 12px var(--success-glow);
+        }
+
+        .decline-btn {
+            background: rgba(239, 68, 68, 0.15);
+            color: #ef4444;
+            border: 1px solid rgba(239, 68, 68, 0.3);
+        }
+
+        .decline-btn:hover {
+            background: var(--danger);
+            color: white;
+            box-shadow: 0 0 12px var(--danger-glow);
+        }
+
+        /* loading spinners */
+        .typing-indicator {
+            display: inline-flex;
+            align-items: center;
+            gap: 3px;
+            padding: 0.5rem 0.875rem;
+            background-color: #2e354f;
+            border-radius: 1rem;
+            border-bottom-left-radius: 0.25rem;
+            align-self: flex-start;
+            animation: slideIn 0.3s ease;
+        }
+
+        .typing-dot {
+            width: 6px;
+            height: 6px;
+            background-color: var(--text-secondary);
+            border-radius: 50%;
+            animation: wave 1.2s infinite ease-in-out;
+        }
+
+        .typing-dot:nth-child(2) { animation-delay: 0.2s; }
+        .typing-dot:nth-child(3) { animation-delay: 0.4s; }
+
+        @keyframes wave {
+            0%, 60%, 100% { transform: translateY(0); }
+            30% { transform: translateY(-4px); }
+        }
+
+        .global-notification {
+            position: fixed;
+            bottom: 2rem;
+            right: 2rem;
+            z-index: 100;
+            padding: 1rem 1.5rem;
+            border-radius: 0.5rem;
+            background: #10b981;
+            color: white;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+            font-weight: 500;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            transform: translateY(150%);
+            transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+
+        .global-notification.show {
+            transform: translateY(0);
+        }
+
+        .global-notification.error {
+            background: #ef4444;
+        }
+    </style>
+</head>
+<body>
+
+    <header>
+        <div class="logo-container">
+            <div class="logo-icon">
+                <svg viewBox="0 0 24 24">
+                    <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"/>
+                </svg>
+            </div>
+            <h1>Order Resolution Operations Centre</h1>
+        </div>
+        <div class="system-status">
+            <div class="status-dot"></div>
+            <span>AGENT CORE CONNECTED</span>
+        </div>
+    </header>
+
+    <div class="main-container">
+        
+        <!-- LEFT PANEL: CUSTOMER INTERACTION -->
+        <div class="glass-panel">
+            <div class="panel-header">
+                <h2>
+                    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"></path>
+                    </svg>
+                    Customer Chat Sandbox
+                </h2>
+            </div>
+            
+            <div class="session-selector-bar">
+                <span style="font-size: 0.8rem; color: var(--text-secondary); font-weight: 500;">Simulated Customer Profile:</span>
+                <select id="customer-select" class="session-select" onchange="switchCustomerSession()">
+                    <option value="cust_alpha">Customer A (Alpha) - Checking ABC-123 (Unshipped)</option>
+                    <option value="cust_beta" selected>Customer B (Beta) - Returning XYZ-789 ($1,499 value -> High Ticket)</option>
+                    <option value="cust_gamma">Customer C (Gamma) - Returning OLD-456 (45 days ago -> Expired)</option>
+                    <option value="cust_delta">Customer D (Delta) - Cancelling FIT-401 (Unshipped)</option>
+                </select>
+            </div>
+
+            <div id="chat-messages" class="chat-viewport">
+                <!-- Chat bubbles will be dynamically appended here -->
+            </div>
+
+            <div class="chat-input-area">
+                <form id="chat-form" class="chat-input-form" onsubmit="sendChatMessage(event)">
+                    <input type="text" id="chat-input" class="chat-input" placeholder="Type a message to the agent (e.g. 'I want to return order XYZ-789')..." autocomplete="off">
+                    <button type="submit" class="chat-submit-btn">
+                        <svg viewBox="0 0 24 24" width="24" height="24" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+                            <line x1="22" y1="2" x2="11" y2="13"></line>
+                            <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+                        </svg>
+                    </button>
+                </form>
+            </div>
+        </div>
+
+        <!-- RIGHT PANEL: SUPERVISOR AUDIT CONTROL -->
+        <div class="glass-panel">
+            <div class="panel-header">
+                <h2>
+                    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"></path>
+                    </svg>
+                    Supervisor Escalations
+                </h2>
+                <span id="escalation-counter" class="escalation-badge-count" style="display: none;">0</span>
+            </div>
+
+            <div id="escalations-list" class="escalation-container">
+                <!-- Escalation list items will be dynamically rendered here -->
+            </div>
+        </div>
+
+    </div>
+
+    <div id="toast" class="global-notification">
+        <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="20 6 9 17 4 12"></polyline>
+        </svg>
+        <span id="toast-message">Success notification message.</span>
+    </div>
+
+    <script>
+        const chatHistories = {}; // Map of customer_id -> Array of message objects
+        let currentCustomerId = "cust_beta";
+
+        // Initialize default greeting message on start
+        window.addEventListener("DOMContentLoaded", () => {
+            currentCustomerId = document.getElementById("customer-select").value;
+            loadChatHistory();
+            fetchEscalations();
+            setInterval(fetchEscalations, 3000); // Poll escalations list every 3s
+        });
+
+        function showNotification(message, isError = false) {
+            const toast = document.getElementById("toast");
+            const toastMsg = document.getElementById("toast-message");
+            toastMsg.textContent = message;
+            
+            if (isError) {
+                toast.classList.add("error");
+            } else {
+                toast.classList.remove("error");
+            }
+            
+            toast.classList.add("show");
+            setTimeout(() => {
+                toast.classList.remove("show");
+            }, 4000);
+        }
+
+        function switchCustomerSession() {
+            currentCustomerId = document.getElementById("customer-select").value;
+            loadChatHistory();
+        }
+
+        function loadChatHistory() {
+            const container = document.getElementById("chat-messages");
+            container.innerHTML = "";
+
+            if (!chatHistories[currentCustomerId]) {
+                // Initialize default greeting
+                chatHistories[currentCustomerId] = [{
+                    sender: "agent",
+                    text: `Hello! I'm your virtual resolution assistant. How can I help you with your order today?`,
+                    timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                }];
+            }
+
+            chatHistories[currentCustomerId].forEach(msg => {
+                appendBubbleToViewport(msg.sender, msg.text, msg.timestamp);
+            });
+            scrollToBottom();
+        }
+
+        function appendBubbleToViewport(sender, text, timestamp) {
+            const container = document.getElementById("chat-messages");
+            const bubble = document.createElement("div");
+            bubble.className = `message-bubble ${sender === "customer" ? "outgoing" : sender === "agent" ? "incoming" : "system"}`;
+            
+            let textHtml = text.replace(/\n/g, "<br>");
+            bubble.innerHTML = `
+                <div>${textHtml}</div>
+                <div class="message-meta">${timestamp}</div>
+            `;
+            container.appendChild(bubble);
+        }
+
+        function removeTypingIndicator() {
+            const indicator = document.getElementById("typing-indicator");
+            if (indicator) {
+                indicator.remove();
+            }
+        }
+
+        function showTypingIndicator() {
+            removeTypingIndicator();
+            const container = document.getElementById("chat-messages");
+            const div = document.createElement("div");
+            div.id = "typing-indicator";
+            div.className = "typing-indicator";
+            div.innerHTML = `
+                <div class="typing-dot"></div>
+                <div class="typing-dot"></div>
+                <div class="typing-dot"></div>
+            `;
+            container.appendChild(div);
+            scrollToBottom();
+        }
+
+        function scrollToBottom() {
+            const container = document.getElementById("chat-messages");
+            container.scrollTop = container.scrollHeight;
+        }
+
+        async function sendChatMessage(e) {
+            if (e) e.preventDefault();
+            const input = document.getElementById("chat-input");
+            const text = input.value.trim();
+            if (!text) return;
+
+            input.value = "";
+            const now = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            
+            // Save & render user message
+            chatHistories[currentCustomerId].push({ sender: "customer", text: text, timestamp: now });
+            appendBubbleToViewport("customer", text, now);
+            scrollToBottom();
+
+            // Show bot thinking state
+            showTypingIndicator();
+
+            try {
+                const response = await fetch("/api/chat", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ customer_id: currentCustomerId, message: text })
+                });
+                
+                removeTypingIndicator();
+                const data = await response.json();
+                
+                if (response.ok) {
+                    const replyText = data.response;
+                    chatHistories[currentCustomerId].push({ sender: "agent", text: replyText, timestamp: now });
+                    appendBubbleToViewport("agent", replyText, now);
+                    
+                    if (data.status === "pending_approval") {
+                        showNotification("Request paused. Escaping high-value return to supervisor audit queue.", false);
+                        fetchEscalations(); // Instantly reload escalations
+                    }
+                } else {
+                    const errorMsg = data.error || "An error occurred";
+                    chatHistories[currentCustomerId].push({ sender: "system", text: `Error: ${errorMsg}`, timestamp: now });
+                    appendBubbleToViewport("system", `Error: ${errorMsg}`, now);
+                }
+            } catch (err) {
+                removeTypingIndicator();
+                chatHistories[currentCustomerId].push({ sender: "system", text: `Network error: Could not reach server.`, timestamp: now });
+                appendBubbleToViewport("system", `Network error: Could not reach server.`, now);
+            }
+            scrollToBottom();
+        }
+
+        async function fetchEscalations() {
+            try {
+                const response = await fetch("/api/escalations");
+                if (!response.ok) throw new Error("Failed to fetch escalations");
+                
+                const escalations = await response.json();
+                renderEscalationsList(escalations);
+            } catch (err) {
+                console.error("Error pulling escalations:", err);
+            }
+        }
+
+        function renderEscalationsList(escalations) {
+            const container = document.getElementById("escalations-list");
+            const counter = document.getElementById("escalation-counter");
+            container.innerHTML = "";
+
+            if (escalations.length === 0) {
+                counter.style.display = "none";
+                container.innerHTML = `
+                    <div class="no-escalations">
+                        <div class="no-escalations-icon">
+                            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"></path>
+                            </svg>
+                        </div>
+                        <h3>All Clean!</h3>
+                        <p>There are no order resolution escalations currently awaiting review.</p>
+                    </div>
+                `;
+                return;
+            }
+
+            counter.textContent = escalations.length;
+            counter.style.display = "inline-block";
+
+            escalations.forEach(item => {
+                const card = document.createElement("div");
+                card.className = "escalation-card";
+                
+                card.innerHTML = `
+                    <div class="escalation-card-header">
+                        <div class="order-meta-info">
+                            <span class="order-id-label">${item.order_id}</span>
+                            <span class="customer-id-label">Session ID: ${item.customer_id}</span>
+                        </div>
+                        <span class="risk-badge">RISK: ${Math.round(item.risk_score * 100)}%</span>
+                    </div>
+
+                    <div class="escalation-details-grid">
+                        <div class="detail-item">
+                            <span class="detail-label">Item</span>
+                            <span class="detail-val" title="${item.item_name}">${item.item_name}</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Value</span>
+                            <span class="detail-val" style="font-weight: 700; color: #f87171;">$${parseFloat(item.item_value).toFixed(2)}</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Deliv. Age</span>
+                            <span class="detail-val">${item.days_since_delivery} days ago</span>
+                        </div>
+                    </div>
+
+                    <div class="escalation-actions">
+                        <button class="action-btn approve-btn" onclick="resolveEscalation('${item.order_id}', 'approve')">
+                            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"></path>
+                            </svg>
+                            Approve
+                        </button>
+                        <button class="action-btn decline-btn" onclick="resolveEscalation('${item.order_id}', 'decline')">
+                            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M6 18L18 6M6 6l12 12"></path>
+                            </svg>
+                            Decline
+                        </button>
+                    </div>
+                `;
+                container.appendChild(card);
+            });
+        }
+
+        async function resolveEscalation(orderId, action) {
+            try {
+                const response = await fetch(`/api/${action}`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ order_id: orderId })
+                });
+
+                const data = await response.json();
+                if (response.ok) {
+                    showNotification(`Order ${orderId} successfully ${action}d!`);
+                    
+                    // Update UI chat view automatically if the supervisor acts
+                    const now = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                    const systemText = `[Supervisor Action] Resolution has been ${action.toUpperCase()}D by a manager. Result: ${data.response}`;
+                    chatHistories[currentCustomerId].push({ sender: "system", text: systemText, timestamp: now });
+                    
+                    loadChatHistory();
+                    fetchEscalations();
+                } else {
+                    showNotification(data.error || `Failed to ${action} escalation`, true);
+                }
+            } catch (err) {
+                showNotification(`Network error during resolution.`, true);
+            }
+        }
+    </script>
+</body>
+</html>
