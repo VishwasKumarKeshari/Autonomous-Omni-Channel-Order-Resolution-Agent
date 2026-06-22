@@ -185,6 +185,8 @@ def decline_escalation():
         return jsonify({"error": str(e)}), 500
 
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 5000))
+    # If running on Hugging Face (detected by SPACE_ID), default to 7860, otherwise 5000 locally
+    default_port = 7860 if "SPACE_ID" in os.environ else 5000
+    port = int(os.environ.get("PORT", default_port))
     app.run(host="0.0.0.0", port=port, debug=True)
 
