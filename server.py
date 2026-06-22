@@ -9,6 +9,10 @@ from dotenv import load_dotenv
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 logger = logging.getLogger("api_server")
 
+# Silence noisy Werkzeug access logs from background polling
+logging.getLogger("werkzeug").setLevel(logging.WARNING)
+
+
 # Load environment variables
 load_dotenv(override=True)
 
