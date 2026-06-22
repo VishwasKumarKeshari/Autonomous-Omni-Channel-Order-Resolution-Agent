@@ -22,8 +22,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy the rest of the application files
 COPY . .
 
-# Expose port 5000 for the Flask server
-EXPOSE 5000
+# Expose port 7860 for the Hugging Face Space server
+EXPOSE 7860
 
 # Run the Flask application
 CMD ["python", "server.py"]
+
