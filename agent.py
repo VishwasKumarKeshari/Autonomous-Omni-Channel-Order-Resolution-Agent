@@ -12,7 +12,7 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.messages import BaseMessage, HumanMessage, AIMessage
 from langgraph.graph import StateGraph, START, END
 from langgraph.graph.message import add_messages
-from langgraph.checkpoint.memory import MemorySaver
+from langgraph.checkpoint.sqlite import SqliteSaver
 
 # Import the official client adapter to bridge LangGraph with external MCP servers
 
@@ -52,6 +52,31 @@ MCP_CONFIG = {
     }
 }
 
+# Globally defined client and lifecycle management functions
+mcp_client = None
+session_ctx = None
+mcp_session = None
+
+def get_mcp_client():
+    global mcp_client
+    if mcp_client is None:
+        mcp_client = MultiServerMCPClient(MCP_CONFIG)
+    return mcp_client
+
+async def init_mcp_client():
+    global mcp_session, session_ctx
+    client = get_mcp_client()
+    session_ctx = client.session("local-db-mcp-service")
+    mcp_session = await session_ctx.__aenter__()
+
+async def close_mcp_client():
+    global mcp_session, session_ctx, mcp_client
+    if session_ctx is not None:
+        await session_ctx.__aexit__(None, None, None)
+        session_ctx = None
+        mcp_session = None
+        mcp_client = None
+
 # ==========================================================
 # 2. GRAPH NODE WORKFLOWS (Leveraging MCP Tools)
 # ==========================================================
@@ -82,9 +107,8 @@ async def process_cancel_node(state: AgentState) -> Dict[str, Any]:
             "resolution_status": "completed"
         }
         
-    mcp_client = MultiServerMCPClient(MCP_CONFIG)
-    async with mcp_client.session("local-db-mcp-service") as session:
-        db_res = await session.call_tool("get_order_details", {"order_id": order_id})
+    global mcp_session
+    db_res = await mcp_session.call_tool("get_order_details", {"order_id": order_id})
         
     db_response = db_res.content[0].text
     if db_response.startswith("Error"):
@@ -93,10 +117,15 @@ async def process_cancel_node(state: AgentState) -> Dict[str, Any]:
     data = json.loads(db_response) 
     
     # Policy check: Shipped/delivered items can't be cancelled directly
-    if data["fulfillment_status"] in ["shipped", "delivered"]:
+    if data["fulfillment_status"] == "shipped":
+        return {
+            "messages": [AIMessage(content=f"Order {order_id} has already shipped out and is in transit. We cannot cancel it now, and it cannot be returned until it is delivered. Please reach back out once you receive the package to initiate a return.")],
+            "resolution_status": "completed"
+        }
+    elif data["fulfillment_status"] == "delivered":
         return {
             "intent": "return_refund",
-            "messages": [AIMessage(content=f"Order {order_id} has already shipped out. Rerouting this to our return pipeline.")]
+            "messages": [AIMessage(content=f"Order {order_id} has already been delivered. Rerouting this request to our return pipeline.")]
         }
         
     return {
@@ -113,9 +142,8 @@ async def process_return_node(state: AgentState) -> Dict[str, Any]:
             "resolution_status": "completed"
         }
         
-    mcp_client = MultiServerMCPClient(MCP_CONFIG)
-    async with mcp_client.session("local-db-mcp-service") as session:
-        db_res = await session.call_tool("get_order_details", {"order_id": order_id})
+    global mcp_session
+    db_res = await mcp_session.call_tool("get_order_details", {"order_id": order_id})
         
     db_response = db_res.content[0].text
     if db_response.startswith("Error"):
@@ -146,9 +174,8 @@ async def general_status_node(state: AgentState) -> Dict[str, Any]:
             "resolution_status": "completed"
         }
         
-    mcp_client = MultiServerMCPClient(MCP_CONFIG)
-    async with mcp_client.session("local-db-mcp-service") as session:
-        db_res = await session.call_tool("get_order_details", {"order_id": order_id})
+    global mcp_session
+    db_res = await mcp_session.call_tool("get_order_details", {"order_id": order_id})
         
     db_response = db_res.content[0].text
     if db_response.startswith("Error"):
@@ -173,18 +200,21 @@ async def risk_and_commit_node(state: AgentState) -> Dict[str, Any]:
         }
         
     # Process transactional changes by calling specific write tools over the network channel
-    mcp_client = MultiServerMCPClient(MCP_CONFIG)
-    async with mcp_client.session("local-db-mcp-service") as session:
-        if intent == "cancel_order":
-            db_res = await session.call_tool("cancel_order", {"order_id": order_id})
-        else:  # return_refund
-            db_res = await session.call_tool("return_order", {"order_id": order_id})
+    global mcp_session
+    if intent == "cancel_order":
+        db_res = await mcp_session.call_tool("cancel_order", {"order_id": order_id})
+    else:  # return_refund
+        db_res = await mcp_session.call_tool("return_order", {"order_id": order_id})
             
     db_mutation_result = db_res.content[0].text
-    
+    if db_mutation_result.startswith("Error"):
+        msg = f"Failed to complete transaction: {db_mutation_result}"
+    else:
+        msg = f"Success! {db_mutation_result}"
+        
     return {
         "resolution_status": "completed",
-        "messages": [AIMessage(content=f"Success! {db_mutation_result}")]
+        "messages": [AIMessage(content=msg)]
     }
 
 def fallback_node(state: AgentState) -> Dict[str, Any]:
@@ -224,7 +254,55 @@ builder.add_edge("order_status", END)
 builder.add_edge("fallback", END)
 builder.add_edge("risk_and_commit", END)
 
-# Compile using short term memory checkpointer to store chat context tracks
-# Interrupt BEFORE running the risk_and_commit node to allow supervisor review of risk score
-memory = MemorySaver()
+# Compile using persistent SQLite checkpointer proxy
+from langgraph.checkpoint.base import BaseCheckpointSaver
+
+class CheckpointProxy(BaseCheckpointSaver):
+    def __init__(self):
+        super().__init__()
+        self.target = None
+
+    def get_tuple(self, config):
+        if self.target is None:
+            raise RuntimeError("Checkpointer target is not initialized")
+        return self.target.get_tuple(config)
+
+    def put(self, config, checkpoint, metadata, new_versions):
+        if self.target is None:
+            raise RuntimeError("Checkpointer target is not initialized")
+        return self.target.put(config, checkpoint, metadata, new_versions)
+
+    def put_writes(self, config, writes, task_id):
+        if self.target is None:
+            raise RuntimeError("Checkpointer target is not initialized")
+        return self.target.put_writes(config, writes, task_id)
+
+    def list(self, config, *, before=None, limit=None):
+        if self.target is None:
+            raise RuntimeError("Checkpointer target is not initialized")
+        return self.target.list(config, before=before, limit=limit)
+
+    async def aget_tuple(self, config):
+        if self.target is None:
+            raise RuntimeError("Checkpointer target is not initialized")
+        return await self.target.aget_tuple(config)
+
+    async def aput(self, config, checkpoint, metadata, new_versions):
+        if self.target is None:
+            raise RuntimeError("Checkpointer target is not initialized")
+        return await self.target.aput(config, checkpoint, metadata, new_versions)
+
+    async def aput_writes(self, config, writes, task_id):
+        if self.target is None:
+            raise RuntimeError("Checkpointer target is not initialized")
+        return await self.target.aput_writes(config, writes, task_id)
+
+    async def alist(self, config, *, before=None, limit=None):
+        if self.target is None:
+            raise RuntimeError("Checkpointer target is not initialized")
+        return await self.target.alist(config, before=before, limit=limit)
+
+memory = CheckpointProxy()
 agent_runtime = builder.compile(checkpointer=memory, interrupt_before=["risk_and_commit"])
+
+

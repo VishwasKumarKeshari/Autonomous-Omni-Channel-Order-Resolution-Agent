@@ -2,6 +2,8 @@ import os
 import logging
 import sqlite3
 import asyncio
+import threading
+import atexit
 from flask import Flask, request, jsonify, render_template
 from dotenv import load_dotenv
 
@@ -16,16 +18,81 @@ logging.getLogger("werkzeug").setLevel(logging.WARNING)
 # Load environment variables
 load_dotenv(override=True)
 
-# Import the LangGraph agent
-from agent import agent_runtime
+# Import the LangGraph agent and MCP lifecycle functions
+from agent import agent_runtime, init_mcp_client, close_mcp_client
 from langchain_core.messages import HumanMessage
 
 app = Flask(__name__)
 
 DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "my_company_data.db")
 
-# Registry mapping order_id -> {"customer_id": str, "risk_score": float}
-pending_escalations = {}
+# Setup background event loop and daemon thread
+bg_loop = asyncio.new_event_loop()
+def start_bg_loop():
+    asyncio.set_event_loop(bg_loop)
+    bg_loop.run_forever()
+
+t = threading.Thread(target=start_bg_loop, daemon=True)
+t.start()
+
+def run_async(coro):
+    future = asyncio.run_coroutine_threadsafe(coro, bg_loop)
+    return future.result()
+
+# Global services state
+checkpointer_ctx = None
+
+async def init_services():
+    global checkpointer_ctx
+    # Initialize checkpointer
+    from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
+    from agent import memory
+    checkpointer_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "checkpoints.db")
+    checkpointer_ctx = AsyncSqliteSaver.from_conn_string(checkpointer_path)
+    real_saver = await checkpointer_ctx.__aenter__()
+    memory.target = real_saver
+    
+    # Initialize MCP client
+    await init_mcp_client()
+
+async def close_services():
+    global checkpointer_ctx
+    # Close MCP client
+    await close_mcp_client()
+    # Close checkpointer
+    if checkpointer_ctx is not None:
+        await checkpointer_ctx.__aexit__(None, None, None)
+        checkpointer_ctx = None
+
+# Initialize services on background loop
+run_async(init_services())
+
+def cleanup():
+    logger.info("Application shutting down. Cleaning up services...")
+    try:
+        run_async(close_services())
+    except Exception as e:
+        logger.error(f"Error during services cleanup: {e}")
+    bg_loop.call_soon_threadsafe(bg_loop.stop)
+
+atexit.register(cleanup)
+
+
+# Initialize escalations schema
+def init_escalations_table():
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS escalations (
+            order_id TEXT PRIMARY KEY,
+            customer_id TEXT,
+            risk_score REAL
+        )
+    """)
+    conn.commit()
+    conn.close()
+
+init_escalations_table()
 
 @app.route("/", methods=["GET"])
 def index():
@@ -49,11 +116,22 @@ def chat():
     logger.info(f"Chat request from {customer_id}: {message_text}")
 
     config = {"configurable": {"thread_id": customer_id}}
+    
+    # State override check: Block user message if review is pending
+    current_state = agent_runtime.get_state(config)
+    if current_state and current_state.next and "risk_and_commit" in current_state.next:
+        order_id = current_state.values.get("order_id")
+        return jsonify({
+            "response": "Your transaction return/refund request is currently undergoing review. A supervisor is reviewing your request. Please wait until they approve or reject it.",
+            "status": "pending_approval",
+            "order_id": order_id
+        })
+
     state_input = {"messages": [HumanMessage(content=message_text)]}
 
     try:
         # Run agent graph
-        result_state = asyncio.run(agent_runtime.ainvoke(state_input, config=config))
+        result_state = run_async(agent_runtime.ainvoke(state_input, config=config))
         
         # Check if the graph is paused at risk_and_commit node
         current_state = agent_runtime.get_state(config)
@@ -64,7 +142,7 @@ def chat():
             if risk_score < 0.7:
                 # Auto-resume low risk transaction
                 logger.info(f"Auto-resuming low risk transaction (score={risk_score}) for {customer_id}")
-                result_state = asyncio.run(agent_runtime.ainvoke(None, config=config))
+                result_state = run_async(agent_runtime.ainvoke(None, config=config))
                 agent_response = result_state["messages"][-1].content
                 return jsonify({"response": agent_response, "status": "completed"})
             else:
@@ -74,10 +152,13 @@ def chat():
                 agent_response = "CRITICAL AUDIT: High transaction value flags system risk rules. Halting execution and transferring to a supervisor."
                 
                 if order_id:
-                    pending_escalations[order_id] = {
-                        "customer_id": customer_id,
-                        "risk_score": risk_score
-                    }
+                    conn = sqlite3.connect(DB_PATH)
+                    cursor = conn.cursor()
+                    cursor.execute("INSERT OR REPLACE INTO escalations (order_id, customer_id, risk_score) VALUES (?, ?, ?)",
+                                   (order_id, customer_id, risk_score))
+                    conn.commit()
+                    conn.close()
+                    
                 return jsonify({
                     "response": agent_response,
                     "status": "pending_approval",
@@ -102,14 +183,14 @@ def get_escalations():
         conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
         
-        for order_id, info in pending_escalations.items():
-            cursor.execute("SELECT * FROM orders WHERE order_id = ?", (order_id,))
-            row = cursor.fetchone()
-            if row:
-                order_details = dict(row)
-                order_details["customer_id"] = info["customer_id"]
-                order_details["risk_score"] = info["risk_score"]
-                escalations_list.append(order_details)
+        cursor.execute("""
+            SELECT o.*, e.customer_id, e.risk_score 
+            FROM escalations e
+            JOIN orders o ON e.order_id = o.order_id
+        """)
+        rows = cursor.fetchall()
+        for row in rows:
+            escalations_list.append(dict(row))
         conn.close()
     except Exception as e:
         logger.error(f"Error querying database for escalations: {e}")
@@ -144,11 +225,25 @@ def approve_escalation():
     data = request.get_json() or {}
     order_id = data.get("order_id")
 
-    if not order_id or order_id not in pending_escalations:
+    if not order_id:
         return jsonify({"error": "Invalid or missing order_id"}), 400
 
-    info = pending_escalations[order_id]
-    customer_id = info["customer_id"]
+    customer_id = None
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        cursor.execute("SELECT customer_id FROM escalations WHERE order_id = ?", (order_id,))
+        row = cursor.fetchone()
+        if row:
+            customer_id = row[0]
+        conn.close()
+    except Exception as e:
+        logger.error(f"Error reading escalation from DB: {e}")
+        return jsonify({"error": str(e)}), 500
+
+    if not customer_id:
+        return jsonify({"error": "Invalid or missing order_id (no pending escalation found)"}), 400
+
     config = {"configurable": {"thread_id": customer_id}}
 
     try:
@@ -156,11 +251,16 @@ def approve_escalation():
         agent_runtime.update_state(config, {"risk_score": 0.0, "resolution_status": "approved"})
         
         # Resume execution
-        result_state = asyncio.run(agent_runtime.ainvoke(None, config=config))
+        result_state = run_async(agent_runtime.ainvoke(None, config=config))
         agent_response = result_state["messages"][-1].content
         
         # Remove from pending escalations
-        pending_escalations.pop(order_id, None)
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM escalations WHERE order_id = ?", (order_id,))
+        conn.commit()
+        conn.close()
+        
         logger.info(f"Supervisor approved return for order {order_id}.")
         return jsonify({"status": "success", "response": agent_response})
     except Exception as e:
@@ -175,11 +275,25 @@ def decline_escalation():
     data = request.get_json() or {}
     order_id = data.get("order_id")
 
-    if not order_id or order_id not in pending_escalations:
+    if not order_id:
         return jsonify({"error": "Invalid or missing order_id"}), 400
 
-    info = pending_escalations[order_id]
-    customer_id = info["customer_id"]
+    customer_id = None
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        cursor.execute("SELECT customer_id FROM escalations WHERE order_id = ?", (order_id,))
+        row = cursor.fetchone()
+        if row:
+            customer_id = row[0]
+        conn.close()
+    except Exception as e:
+        logger.error(f"Error reading escalation from DB: {e}")
+        return jsonify({"error": str(e)}), 500
+
+    if not customer_id:
+        return jsonify({"error": "Invalid or missing order_id (no pending escalation found)"}), 400
+
     config = {"configurable": {"thread_id": customer_id}}
 
     try:
@@ -200,7 +314,12 @@ def decline_escalation():
         agent_response = current_state.values["messages"][-1].content
         
         # Remove from pending escalations
-        pending_escalations.pop(order_id, None)
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM escalations WHERE order_id = ?", (order_id,))
+        conn.commit()
+        conn.close()
+        
         logger.info(f"Supervisor declined return for order {order_id}.")
         return jsonify({"status": "success", "response": agent_response})
     except Exception as e:
